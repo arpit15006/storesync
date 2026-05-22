@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: checkout-service
+  redis:
+    host: localhost
+    port: 6379
+  kafka:
+    producer:
+      bootstrap-servers: localhost:9092
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+server:
+  port: 8082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus, health, info
+  metrics:
+    export:
+      prometheus:
+        enabled: true
