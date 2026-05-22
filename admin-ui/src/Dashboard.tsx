@@ -1,31 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, AlertTriangle, Package, ShieldAlert, Terminal, Zap, ArrowRight, Server, Database, BrainCircuit, RefreshCw, AlertOctagon, CheckCircle2 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area } from 'recharts';
+import { Activity, AlertTriangle, Package, ShieldAlert, Terminal, Zap, ArrowRight, Server, Database, BrainCircuit, RefreshCw, AlertOctagon, CheckCircle2, BarChart2, Flame } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
-// UI Components - Strict Operational Aesthetic
+// UI Components
 const Card = ({ className, children }: any) => (
-  <div className={`rounded-md border border-zinc-800 bg-[#0c0c0e] shadow-sm ${className}`}>
+  <div className={`rounded-md border border-zinc-800 bg-[#0c0c0e] shadow-sm flex flex-col ${className}`}>
     {children}
   </div>
 );
 
-const CardHeader = ({ title, icon }: any) => (
+const CardHeader = ({ title, icon, action }: any) => (
   <div className="flex items-center justify-between p-4 border-b border-zinc-800/50 bg-zinc-900/30">
     <div className="flex items-center space-x-2 text-zinc-300">
       {icon}
       <h2 className="text-sm font-semibold tracking-wide">{title}</h2>
     </div>
+    {action && <div>{action}</div>}
   </div>
 );
 
-const TopMetric = ({ title, value, unit, trend }: any) => (
+const TopMetric = ({ title, value, unit, trend, isWarning }: any) => (
   <Card className="p-4 flex flex-col justify-between">
     <div className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">{title}</div>
     <div className="flex items-baseline space-x-1">
-      <span className="text-2xl font-mono text-zinc-100">{value}</span>
+      <span className={`text-2xl font-mono ${isWarning ? 'text-rose-400' : 'text-zinc-100'}`}>{value}</span>
       {unit && <span className="text-sm font-mono text-zinc-500">{unit}</span>}
     </div>
-    <div className="text-xs text-zinc-400 mt-2 font-mono">{trend}</div>
+    <div className={`text-xs mt-2 font-mono ${isWarning ? 'text-rose-500' : 'text-zinc-400'}`}>{trend}</div>
   </Card>
 );
 
@@ -39,6 +40,7 @@ const generateForecastData = () => {
 };
 
 export default function Dashboard() {
+  const [chaosMode, setChaosMode] = useState(false);
   const [metrics, setMetrics] = useState({
     throughput: 1240,
     latency: 24,
@@ -48,7 +50,9 @@ export default function Dashboard() {
     conflicts: 5,
     retryQueue: 18,
     dlq: 0,
-    recoveryRate: 99.2
+    recoveryRate: 99.2,
+    kafkaLag: 0,
+    inventoryLag: 1
   });
   
   const [logs, setLogs] = useState([
@@ -61,31 +65,62 @@ export default function Dashboard() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      // Simulate highly active backend operations
-      setMetrics(prev => ({
-        throughput: Math.floor(Math.random() * 200) + 1100,
-        latency: Math.floor(Math.random() * 8) + 18,
-        fraud: Math.random() > 0.8 ? prev.fraud + 1 : prev.fraud,
-        threads: Math.floor(Math.random() * 50) + 120,
-        locks: Math.floor(Math.random() * 45) + 115,
-        conflicts: Math.floor(Math.random() * 5),
-        retryQueue: Math.max(0, prev.retryQueue + (Math.random() > 0.5 ? 1 : -1)),
-        dlq: prev.dlq,
-        recoveryRate: 99.0 + (Math.random() * 0.5)
-      }));
+      setMetrics(prev => {
+        if (chaosMode) {
+          // Chaos Engineering Simulation: Broker Failure
+          return {
+            throughput: Math.max(0, prev.throughput - Math.floor(Math.random() * 300)),
+            latency: prev.latency + Math.floor(Math.random() * 200),
+            fraud: prev.fraud,
+            threads: prev.threads + Math.floor(Math.random() * 20),
+            locks: Math.max(0, prev.locks - Math.floor(Math.random() * 10)),
+            conflicts: prev.conflicts + Math.floor(Math.random() * 15),
+            retryQueue: prev.retryQueue + Math.floor(Math.random() * 45),
+            dlq: prev.dlq + Math.floor(Math.random() * 2),
+            recoveryRate: Math.max(45.0, prev.recoveryRate - (Math.random() * 5.0)),
+            kafkaLag: prev.kafkaLag + Math.floor(Math.random() * 800),
+            inventoryLag: prev.inventoryLag + Math.floor(Math.random() * 1200)
+          };
+        } else {
+          // Normal Operation & Auto-Recovery
+          return {
+            throughput: Math.floor(Math.random() * 200) + 1100,
+            latency: Math.max(18, prev.latency - Math.floor(Math.random() * 50)),
+            fraud: Math.random() > 0.8 ? prev.fraud + 1 : prev.fraud,
+            threads: Math.floor(Math.random() * 50) + 120,
+            locks: Math.floor(Math.random() * 45) + 115,
+            conflicts: Math.floor(Math.random() * 5),
+            retryQueue: Math.max(0, prev.retryQueue - Math.floor(Math.random() * 15)),
+            dlq: prev.dlq,
+            recoveryRate: Math.min(99.8, prev.recoveryRate + (Math.random() * 2.0)),
+            kafkaLag: Math.max(0, prev.kafkaLag - Math.floor(Math.random() * 500)),
+            inventoryLag: Math.max(1, prev.inventoryLag - Math.floor(Math.random() * 500))
+          };
+        }
+      });
 
-      if (Math.random() > 0.7) {
-        const events = [
+      if (Math.random() > (chaosMode ? 0.2 : 0.7)) {
+        const events = chaosMode ? [
+          '[CRITICAL] Kafka Broker Partition Offline',
+          '[WARN] CheckoutOrchestrator TimeoutException',
+          '[ALERT] Dead Letter Queue insertion failed',
+          '[REDIS] Connection pool exhausted'
+        ] : [
           '[REDIS] ZSET Sliding window evaluated 1.2k keys',
           '[POSTGRES] OptimisticLockException recovered on SKU-102',
           '[KAFKA] Committed offset 84992 for topic: checkout.completed',
           '[ML_API] Inference served in 12ms (XGBoost v1.0.0)'
         ];
-        setLogs(prev => [...prev.slice(-8), { id: Date.now(), msg: events[Math.floor(Math.random()*events.length)] }]);
+        
+        const newLog = { 
+          id: Date.now(), 
+          msg: events[Math.floor(Math.random()*events.length)] 
+        };
+        setLogs(prev => [...prev.slice(-15), newLog]);
       }
     }, 1500);
     return () => clearInterval(interval);
-  }, []);
+  }, [chaosMode]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -99,42 +134,79 @@ export default function Dashboard() {
         <header className="flex justify-between items-center pb-4 border-b border-zinc-800">
           <div>
             <h1 className="text-xl font-bold text-zinc-100 flex items-center">
-              <Server className="h-5 w-5 mr-2 text-emerald-500" />
+              <Server className="h-5 w-5 mr-2 text-blue-500" />
               StoreSync Operations Center
             </h1>
             <p className="text-xs text-zinc-500 font-mono mt-1">ENV: PRODUCTION | REGION: US-EAST-1 | VERSION: 1.0.4</p>
           </div>
-          <div className="flex items-center space-x-3 text-xs font-mono">
-            <span className="flex items-center text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
-              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-2 animate-pulse"></div>
-              SYSTEM HEALTHY
+          <div className="flex items-center space-x-4">
+            <button 
+              onClick={() => setChaosMode(!chaosMode)}
+              className={`flex items-center px-3 py-1.5 rounded border text-xs font-mono transition-colors ${
+                chaosMode 
+                  ? 'bg-rose-500/20 border-rose-500/50 text-rose-400 hover:bg-rose-500/30' 
+                  : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:bg-zinc-800'
+              }`}
+            >
+              <Flame className="h-3.5 w-3.5 mr-2" />
+              {chaosMode ? 'STOP CHAOS SIMULATION' : 'Simulate Broker Failure'}
+            </button>
+
+            <span className={`flex items-center px-2 py-1 rounded border text-xs font-mono ${
+              chaosMode ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+            }`}>
+              <div className={`w-1.5 h-1.5 rounded-full mr-2 animate-pulse ${chaosMode ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>
+              {chaosMode ? 'SYSTEM DEGRADED' : 'SYSTEM HEALTHY'}
             </span>
           </div>
         </header>
 
         {/* TOP ROW: High-Level Telemetry */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <TopMetric title="API Throughput" value={metrics.throughput} unit="req/s" trend="↑ 4.2% vs last hour" />
-          <TopMetric title="P99 Latency" value={metrics.latency} unit="ms" trend="Stable (Target < 50ms)" />
-          <TopMetric title="Fraud Blocks" value={metrics.fraud} unit="blocks" trend="Sliding window (5m)" />
-          <TopMetric title="Recovery Rate" value={metrics.recoveryRate.toFixed(1)} unit="%" trend="Auto-retry success" />
+          <TopMetric 
+            title="API Throughput" 
+            value={metrics.throughput} 
+            unit="req/s" 
+            trend={chaosMode ? '↓ CRITICAL DROP' : '↑ 4.2% vs last hour'} 
+            isWarning={chaosMode}
+          />
+          <TopMetric 
+            title="P99 Latency" 
+            value={metrics.latency} 
+            unit="ms" 
+            trend={chaosMode ? 'TIMEOUT RISK' : 'Stable (Target < 50ms)'} 
+            isWarning={chaosMode || metrics.latency > 100}
+          />
+          <TopMetric 
+            title="Fraud Blocks" 
+            value={metrics.fraud} 
+            unit="blocks" 
+            trend="Sliding window (5m)" 
+          />
+          <TopMetric 
+            title="Recovery Rate" 
+            value={metrics.recoveryRate.toFixed(1)} 
+            unit="%" 
+            trend={chaosMode ? 'CASCADING FAILURE' : 'Auto-retry success'} 
+            isWarning={chaosMode}
+          />
         </div>
 
-        {/* MIDDLE ROW: Systems Architecture & Concurrency */}
+        {/* ROW 2: Systems Architecture, Benchmarks & Kafka Monitor */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Architecture Diagram */}
           <Card className="lg:col-span-1">
             <CardHeader title="Live System Architecture" icon={<Activity className="h-4 w-4" />} />
-            <div className="p-6 flex flex-col items-center justify-center space-y-3 font-mono text-xs text-zinc-400">
+            <div className="flex-grow p-6 flex flex-col items-center justify-center space-y-3 font-mono text-xs text-zinc-400">
               <div className="w-full flex justify-between items-center bg-zinc-900 border border-zinc-800 p-2 rounded">
                 <span className="text-blue-400">Checkout Service</span>
                 <span className="text-[10px]">Spring Boot</span>
               </div>
-              <ArrowRight className="h-4 w-4 rotate-90 text-zinc-600" />
-              <div className="w-full flex justify-between items-center bg-zinc-900 border border-zinc-800 p-2 rounded">
-                <span className="text-orange-400">Kafka Broker</span>
-                <span className="text-[10px]">Event Stream</span>
+              <ArrowRight className={`h-4 w-4 rotate-90 ${chaosMode ? 'text-rose-500' : 'text-zinc-600'}`} />
+              <div className={`w-full flex justify-between items-center bg-zinc-900 border p-2 rounded ${chaosMode ? 'border-rose-500/50' : 'border-zinc-800'}`}>
+                <span className={chaosMode ? 'text-rose-400' : 'text-orange-400'}>Kafka Broker</span>
+                <span className="text-[10px]">{chaosMode ? 'PARTITION OFFLINE' : 'Event Stream'}</span>
               </div>
               <ArrowRight className="h-4 w-4 rotate-90 text-zinc-600" />
               <div className="w-full flex justify-between items-center bg-zinc-900 border border-zinc-800 p-2 rounded">
@@ -149,8 +221,37 @@ export default function Dashboard() {
             </div>
           </Card>
 
+          {/* Benchmark Metrics Panel */}
+          <Card className="lg:col-span-1">
+            <CardHeader title="Benchmark Metrics" icon={<BarChart2 className="h-4 w-4" />} />
+            <div className="flex-grow p-4">
+              <table className="w-full text-left font-mono text-sm h-full">
+                <tbody className="text-zinc-300">
+                  <tr className="border-b border-zinc-800/50">
+                    <td className="py-3 text-zinc-400">Peak Throughput</td>
+                    <td className="py-3 text-right text-emerald-400 font-bold">5.2k req/s</td>
+                  </tr>
+                  <tr className="border-b border-zinc-800/50">
+                    <td className="py-3 text-zinc-400">Cache Hit Rate</td>
+                    <td className="py-3 text-right font-bold">94.8%</td>
+                  </tr>
+                  <tr className="border-b border-zinc-800/50">
+                    <td className="py-3 text-zinc-400">Kafka Consumer Lag</td>
+                    <td className={`py-3 text-right font-bold ${chaosMode ? 'text-rose-400' : 'text-emerald-400'}`}>
+                      {metrics.kafkaLag}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 text-zinc-400">Reservation Accuracy</td>
+                    <td className="py-3 text-right font-bold">100%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
           {/* Concurrency Simulation */}
-          <Card className="lg:col-span-1 flex flex-col">
+          <Card className="lg:col-span-1">
             <CardHeader title="Concurrency & Locking" icon={<Database className="h-4 w-4" />} />
             <div className="flex-grow p-4 space-y-4 font-mono text-sm">
               <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
@@ -170,48 +271,15 @@ export default function Dashboard() {
               </div>
             </div>
           </Card>
-
-          {/* Kafka Monitoring */}
-          <Card className="lg:col-span-1">
-            <CardHeader title="Kafka Topic Monitor" icon={<RefreshCw className="h-4 w-4" />} />
-            <div className="p-4">
-              <table className="w-full text-left font-mono text-xs">
-                <thead>
-                  <tr className="text-zinc-500 border-b border-zinc-800">
-                    <th className="pb-2">Topic</th>
-                    <th className="pb-2 text-right">Throughput</th>
-                    <th className="pb-2 text-right">Lag</th>
-                  </tr>
-                </thead>
-                <tbody className="text-zinc-300">
-                  <tr className="border-b border-zinc-800/50">
-                    <td className="py-3 truncate max-w-[100px]">checkout.completed</td>
-                    <td className="py-3 text-right">{metrics.throughput}/s</td>
-                    <td className="py-3 text-right text-emerald-400">0</td>
-                  </tr>
-                  <tr className="border-b border-zinc-800/50">
-                    <td className="py-3 truncate max-w-[100px]">inventory.updated</td>
-                    <td className="py-3 text-right">{Math.floor(metrics.throughput * 1.5)}/s</td>
-                    <td className="py-3 text-right text-emerald-400">1</td>
-                  </tr>
-                  <tr>
-                    <td className="py-3 truncate max-w-[100px]">fraud.alerts</td>
-                    <td className="py-3 text-right">12/s</td>
-                    <td className="py-3 text-right text-emerald-400">0</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </Card>
         </div>
 
-        {/* BOTTOM ROW: Business Impact & Retries */}
+        {/* ROW 3: Inventory Table & Retry Telemetry */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Low Stock Operational Table */}
           <Card className="lg:col-span-2">
             <CardHeader title="Operational Inventory Intelligence" icon={<Package className="h-4 w-4" />} />
-            <div className="p-4 overflow-x-auto">
+            <div className="flex-grow p-4 overflow-x-auto">
               <table className="w-full text-left font-mono text-xs whitespace-nowrap">
                 <thead>
                   <tr className="text-zinc-500 border-b border-zinc-800">
@@ -252,19 +320,22 @@ export default function Dashboard() {
           {/* Failure & Retry Panel */}
           <Card className="lg:col-span-1">
             <CardHeader title="Failure & Retry Telemetry" icon={<AlertOctagon className="h-4 w-4" />} />
-            <div className="p-4 space-y-4 font-mono text-sm">
+            <div className="flex-grow p-4 space-y-4 font-mono text-sm">
               <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
                 <span className="text-zinc-500">Retry Queue</span>
-                <span className="text-amber-400">{metrics.retryQueue}</span>
+                <span className={chaosMode ? 'text-rose-400 font-bold' : 'text-amber-400'}>{metrics.retryQueue}</span>
               </div>
               <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
                 <span className="text-zinc-500">Dead Letter Events</span>
-                <span className="text-emerald-400">{metrics.dlq}</span>
+                <span className={metrics.dlq > 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>{metrics.dlq}</span>
               </div>
               <div className="mt-4">
-                <div className="text-xs text-zinc-500 mb-1">Recovery Success Rate</div>
+                <div className="text-xs text-zinc-500 mb-1 flex justify-between">
+                  <span>Recovery Success Rate</span>
+                  <span className={chaosMode ? 'text-rose-400' : 'text-emerald-400'}>{metrics.recoveryRate.toFixed(1)}%</span>
+                </div>
                 <div className="w-full bg-zinc-900 rounded-full h-2 border border-zinc-800 overflow-hidden">
-                  <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${metrics.recoveryRate}%` }}></div>
+                  <div className={`h-2 rounded-full transition-all duration-300 ${chaosMode ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${metrics.recoveryRate}%` }}></div>
                 </div>
               </div>
             </div>
@@ -272,13 +343,13 @@ export default function Dashboard() {
 
         </div>
 
-        {/* BOTTOM ROW 2: Forecasting Chart & Terminal */}
+        {/* ROW 4: Forecasting Chart & Terminal */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Demand Forecast Chart */}
-          <Card className="lg:col-span-2 flex flex-col h-64">
+          <Card className="lg:col-span-2">
             <CardHeader title="XGBoost Demand Forecast (SKU-102)" icon={<BrainCircuit className="h-4 w-4" />} />
-            <div className="flex-grow w-full p-4 pt-0">
+            <div className="flex-grow w-full p-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={forecastData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
@@ -294,16 +365,16 @@ export default function Dashboard() {
           </Card>
 
           {/* System Terminal */}
-          <Card className="lg:col-span-1 flex flex-col h-64">
+          <Card className="lg:col-span-1">
             <CardHeader title="Live System Logs" icon={<Terminal className="h-4 w-4" />} />
             <div 
               ref={scrollRef}
-              className="flex-grow p-4 overflow-y-auto font-mono text-[10px] space-y-2 bg-black"
+              className="flex-grow p-4 h-64 overflow-y-auto font-mono text-[10px] space-y-2 bg-black"
             >
               {logs.map(log => (
                 <div key={log.id} className="text-zinc-500 leading-tight">
                   <span className="text-zinc-700 mr-2">{new Date(log.id).toISOString().split('T')[1].slice(0,-1)}</span>
-                  <span className={log.msg.includes('FRAUD') || log.msg.includes('Exception') ? 'text-rose-400' : 'text-zinc-300'}>
+                  <span className={log.msg.includes('CRITICAL') || log.msg.includes('Exception') || log.msg.includes('ALERT') ? 'text-rose-400' : 'text-zinc-300'}>
                     {log.msg}
                   </span>
                 </div>
